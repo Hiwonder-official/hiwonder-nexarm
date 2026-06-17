@@ -1,177 +1,374 @@
-<p align="center">
-  <img alt="LeRobot, Hugging Face Robotics Library" src="./media/readme/lerobot-logo-thumbnail.png" width="100%">
-</p>
+# NexArm 6-DOF Robot Arm — LeRobot Complete Guide
 
-<div align="center">
+NexArm is a high-performance 6-DOF desktop robot arm based on an ESP32 + AT32F421 co-processor, driven by HX-30HM serial bus servos with 12-bit precision and 1 Mbps communication. This repository integrates NexArm with [🤗 LeRobot](https://github.com/huggingface/lerobot), providing a full pipeline from hardware connection and teleoperation through data collection, model training, and policy inference.
 
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml?query=branch%3Amain)
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml?query=branch%3Amain)
-[![Python versions](https://img.shields.io/pypi/pyversions/lerobot)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/huggingface/lerobot/blob/main/LICENSE)
-[![Status](https://img.shields.io/pypi/status/lerobot)](https://pypi.org/project/lerobot/)
-[![Version](https://img.shields.io/pypi/v/lerobot)](https://pypi.org/project/lerobot/)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1-ff69b4.svg)](https://github.com/huggingface/lerobot/blob/main/CODE_OF_CONDUCT.md)
-[![Discord](https://img.shields.io/badge/Discord-Join_Us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/q8Dzzpym3f)
+---
 
-</div>
+## Table of Contents
 
-**LeRobot** aims to provide models, datasets, and tools for real-world robotics in PyTorch. The goal is to lower the barrier to entry so that everyone can contribute to and benefit from shared datasets and pretrained models.
+- [Hardware Overview](#hardware-overview)
+- [Installation](#installation)
+- [Step 1: Find Serial Ports](#step-1-find-serial-ports)
+- [Step 2: Find Cameras](#step-2-find-cameras)
+- [Step 3: Teleoperation Test](#step-3-teleoperation-test)
+- [Step 4: Collect a Dataset](#step-4-collect-a-dataset)
+- [Step 5: Train a Policy](#step-5-train-a-policy)
+- [Step 6: Run Inference](#step-6-run-inference)
+- [Code Architecture](#code-architecture)
+- [Troubleshooting](#troubleshooting)
 
-🤗 A hardware-agnostic, Python-native interface that standardizes control across diverse platforms, from low-cost arms (SO-100) to humanoids.
+---
 
-🤗 A standardized, scalable LeRobotDataset format (Parquet + MP4 or images) hosted on the Hugging Face Hub, enabling efficient storage, streaming and visualization of massive robotic datasets.
+## Hardware Overview
 
-🤗 State-of-the-art policies that have been shown to transfer to the real-world ready for training and deployment.
+### Components
 
-🤗 Comprehensive support for the open-source ecosystem to democratize physical AI.
+| Component | Description |
+|-----------|-------------|
+| **Leader arm** | ESP32 board driving 6 × HX-30HM servos. Operator freely moves this arm during teleoperation. |
+| **Follower arm** | ESP32 + AT32F421 co-processor driving 6 × HX-30HM servos. Mirrors the leader or executes policy output. |
+| **Servos** | HX-30HM serial bus servos — 12-bit resolution (0–4095), 1 Mbps, high torque. |
+| **Cameras** | 2 × USB cameras: `front` (top-down workspace view) and `wrist` (end-effector close-up), 640×480 @ 30 FPS. |
 
-## Quick Start
+### Joint Layout (6 DOF)
 
-LeRobot can be installed directly from PyPI.
+| Joint | Name | Notes |
+|-------|------|-------|
+| 1 | `shoulder_pan` | Base rotation |
+| 2 | `shoulder_lift` | Mirrored between leader and follower (4096 − pos) |
+| 3 | `elbow_flex` | Elbow |
+| 4 | `wrist_flex` | Wrist pitch |
+| 5 | `wrist_roll` | Wrist rotation |
+| 6 | `gripper` | Open/close, mapped range [1195, 2833] |
 
-```bash
-pip install lerobot
-lerobot-info
+### Communication Protocol
+
+NexArm uses a custom CommProtocol over USB serial:
+
+```
+Frame: [0xFF][0xFF][ID][LEN][CMD][ARGS...][CHECKSUM]
 ```
 
-> [!IMPORTANT]
-> For detailed installation guide, please see the [Installation Documentation](https://huggingface.co/docs/lerobot/installation).
+| CMD | Function | Direction |
+|-----|----------|-----------|
+| 68 | Enter/exit LeRobot bridge mode (follower only) | Host → Follower |
+| 96 | Read 6 servo positions (12-byte reply) | Host → Device → Host |
+| 97 | Write 6 servo positions (12 bytes, no reply) | Host → Device |
+| 98 | Enable/disable torque | Host → Device |
 
-## Robots & Control
+---
 
-<div align="center">
-  <img src="./media/readme/robots_control_video.webp" width="640px" alt="Reachy 2 Demo">
-</div>
+## Installation
 
-LeRobot provides a unified `Robot` class interface that decouples control logic from hardware specifics. It supports a wide range of robots and teleoperation devices.
+### Option A — conda (recommended)
+
+```bash
+git clone https://github.com/liangfuyuan581-creator/lerobot-nexarm.git
+cd lerobot-nexarm
+
+conda create -n nexarm python=3.12 -y
+conda activate nexarm
+
+pip install -e ".[nexarm]"
+```
+
+To enable real-time Rerun visualization during teleoperation:
+
+```bash
+pip install -e ".[nexarm,viz]"
+```
+
+### Option B — venv
+
+```bash
+git clone https://github.com/liangfuyuan581-creator/lerobot-nexarm.git
+cd lerobot-nexarm
+
+python -m venv .venv
+
+# Activate
+# Windows:
+.venv\Scripts\activate
+# Linux / macOS:
+source .venv/bin/activate
+
+pip install -e ".[nexarm]"
+```
+
+### Verify
+
+```bash
+python -c "import lerobot.rollout; print('OK')"
+```
+
+### Connect Hardware
+
+1. Plug the **follower arm** ESP32 into the PC via USB.
+2. Plug the **leader arm** ESP32 into the PC via USB.
+3. Plug in both USB cameras (front + wrist).
+
+### Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Windows 10/11 | Verified | Install CH340 driver; port format `COM19` |
+| Ubuntu 20.04+ | Verified | Port format `/dev/ttyUSB0`; add user to `dialout` group |
+| macOS | Should work | Port format `/dev/tty.usbserial-xxx` |
+
+---
+
+## Step 1: Find Serial Ports
+
+Identify which port corresponds to the leader and which to the follower.
+
+```bash
+python -m lerobot.scripts.lerobot_find_port
+```
+
+Typical output on Windows:
+
+| Port | Device |
+|------|--------|
+| COM18 | Leader ESP32 |
+| COM19 | Follower ESP32 |
+
+On Linux these are typically `/dev/ttyUSB0` and `/dev/ttyUSB1`.
+
+> Tip: plug in one arm at a time if you are unsure which port belongs to which arm.
+
+---
+
+## Step 2: Find Cameras
+
+Identify which camera index is `front` and which is `wrist`.
+
+```bash
+python -m lerobot.scripts.lerobot_find_cameras opencv
+```
+
+Or scan manually and save images to compare:
 
 ```python
-from lerobot.robots.myrobot import MyRobot
+import cv2
 
-# Connect to a robot
-robot = MyRobot(config=...)
-robot.connect()
-
-# Read observation and send action
-obs = robot.get_observation()
-action = model.select_action(obs)
-robot.send_action(action)
+for i in range(10):
+    cap = cv2.VideoCapture(i)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            cv2.imwrite(f"cam_{i}.png", frame)
+            print(f"Camera {i}: available")
+        cap.release()
 ```
 
-**Supported Hardware:** SO100, LeKiwi, Koch, HopeJR, OMX, EarthRover, Reachy2, Gamepads, Keyboards, Phones, OpenARM, Unitree G1.
+- **front**: top-down view of the entire workspace
+- **wrist**: close-up view of the end-effector / gripper
 
-While these devices are natively integrated into the LeRobot codebase, the library is designed to be extensible. You can easily implement the Robot interface to utilize LeRobot's data collection, training, and visualization tools for your own custom robot.
+> Note: camera indices can change when you unplug and replug USB devices. Re-scan after reconnecting.
 
-For detailed hardware setup guides, see the [Hardware Documentation](https://huggingface.co/docs/lerobot/integrate_hardware).
+---
 
-## LeRobot Dataset
+## Step 3: Teleoperation Test
 
-To solve the data fragmentation problem in robotics, we utilize the **LeRobotDataset** format.
+Verify the leader-follower link. The leader arm runs torque-free so the operator can move it freely; the follower mirrors every joint in real time.
 
-- **Structure:** Synchronized MP4 videos (or images) for vision and Parquet files for state/action data.
-- **HF Hub Integration:** Explore thousands of robotics datasets on the [Hugging Face Hub](https://huggingface.co/lerobot).
-- **Tools:** Seamlessly delete episodes, split by indices/fractions, add/remove features, and merge multiple datasets.
-
-```python
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-# Load a dataset from the Hub
-dataset = LeRobotDataset("lerobot/aloha_mobile_cabinet")
-
-# Access data (automatically handles video decoding)
-episode_index=0
-print(f"{dataset[episode_index]['action'].shape=}\n")
-```
-
-Learn more about it in the [LeRobotDataset Documentation](https://huggingface.co/docs/lerobot/lerobot-dataset-v3)
-
-## SoTA Models
-
-LeRobot implements state-of-the-art policies in pure PyTorch, covering Imitation Learning, Reinforcement Learning, and Vision-Language-Action (VLA) models, with more coming soon. It also provides you with the tools to instrument and inspect your training process.
-
-<p align="center">
-  <img alt="Gr00t Architecture" src="./media/readme/VLA_architecture.jpg" width="640px">
-</p>
-
-Training a policy is as simple as running a script configuration:
+Edit `examples/nexarm/teleoperate.yaml` with your actual port numbers and camera indices, then run:
 
 ```bash
-lerobot-train \
-  --policy=act \
-  --dataset.repo_id=lerobot/aloha_mobile_cabinet
+python -m lerobot.scripts.lerobot_teleoperate --config_path=examples/nexarm/teleoperate.yaml
 ```
 
-| Category                   | Models                                                                                                                                                                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Imitation Learning**     | [ACT](./docs/source/policy_act_README.md), [Diffusion](./docs/source/policy_diffusion_README.md), [VQ-BeT](./docs/source/policy_vqbet_README.md), [Multitask DiT Policy](./docs/source/policy_multi_task_dit_README.md) |
-| **Reinforcement Learning** | [HIL-SERL](./docs/source/hilserl.mdx), [TDMPC](./docs/source/policy_tdmpc_README.md) & QC-FQL (coming soon)                                                                                                             |
-| **VLAs Models**            | [Pi0Fast](./docs/source/pi0fast.mdx), [Pi0.5](./docs/source/pi05.mdx), [GR00T N1.5](./docs/source/policy_groot_README.md), [SmolVLA](./docs/source/policy_smolvla_README.md), [XVLA](./docs/source/xvla.mdx)            |
-
-Similarly to the hardware, you can easily implement your own policy & leverage LeRobot's data collection, training, and visualization tools, and share your model to the HF Hub
-
-For detailed policy setup guides, see the [Policy Documentation](https://huggingface.co/docs/lerobot/bring_your_own_policies).
-
-## Inference & Evaluation
-
-Evaluate your policies in simulation or on real hardware using the unified evaluation script. LeRobot supports standard benchmarks like **LIBERO**, **MetaWorld** and more to come.
+Or pass everything on the command line:
 
 ```bash
-# Evaluate a policy on the LIBERO benchmark
-lerobot-eval \
-  --policy.path=lerobot/pi0_libero_finetuned \
-  --env.type=libero \
-  --env.task=libero_object \
-  --eval.n_episodes=10
+python -m lerobot.scripts.lerobot_teleoperate \
+  --robot.type=nexarm_follower --robot.port=COM19 \
+  --teleop.type=nexarm_leader  --teleop.port=COM18 \
+  --fps=30
 ```
 
-Learn how to implement your own simulation environment or benchmark and distribute it from the HF Hub by following the [EnvHub Documentation](https://huggingface.co/docs/lerobot/envhub)
+**What to check:**
+- Follower tracks the leader smoothly across all joints.
+- `shoulder_lift` direction is automatically mirrored.
+- Gripper open/close maps correctly.
 
-## Resources
+---
 
-- **[Documentation](https://huggingface.co/docs/lerobot/index):** The complete guide to tutorials & API.
-- **[Chinese Tutorials: LeRobot+SO-ARM101中文教程-同济子豪兄](https://zihao-ai.feishu.cn/wiki/space/7589642043471924447)** Detailed doc for assembling, teleoperate, dataset, train, deploy. Verified by Seed Studio and 5 global hackathon players.
-- **[Discord](https://discord.gg/q8Dzzpym3f):** Join the `LeRobot` server to discuss with the community.
-- **[X](https://x.com/LeRobotHF):** Follow us on X to stay up-to-date with the latest developments.
-- **[Robot Learning Tutorial](https://huggingface.co/spaces/lerobot/robot-learning-tutorial):** A free, hands-on course to learn robot learning using LeRobot.
+## Step 4: Collect a Dataset
 
-## Citation
+Record demonstration episodes via teleoperation for imitation learning.
 
-If you use LeRobot in your project, please cite the GitHub repository to acknowledge the ongoing development and contributors:
+Edit `examples/nexarm/record.yaml`, then run:
 
-```bibtex
-@misc{cadene2024lerobot,
-    author = {Cadene, Remi and Alibert, Simon and Soare, Alexander and Gallouedec, Quentin and Zouitine, Adil and Palma, Steven and Kooijmans, Pepijn and Aractingi, Michel and Shukor, Mustafa and Aubakirova, Dana and Russi, Martino and Capuano, Francesco and Pascal, Caroline and Choghari, Jade and Moss, Jess and Wolf, Thomas},
-    title = {LeRobot: State-of-the-art Machine Learning for Real-World Robotics in Pytorch},
-    howpublished = "\url{https://github.com/huggingface/lerobot}",
-    year = {2024}
-}
+```bash
+python -m lerobot.scripts.lerobot_record --config_path=examples/nexarm/record.yaml
 ```
 
-If you are referencing our research or the academic paper, please also cite our ICLR publication:
+**Key parameters:**
 
-<details>
-<summary><b>ICLR 2026 Paper</b></summary>
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `dataset.repo_id` | `local/nexarm_pick` | Dataset name (saved locally) |
+| `dataset.num_episodes` | 50 | Number of episodes to record |
+| `dataset.episode_time_s` | 10 | Duration of each episode (seconds) |
+| `dataset.reset_time_s` | 10 | Time between episodes to reset the scene |
+| `dataset.fps` | 30 | Recording frame rate |
+| `dataset.push_to_hub` | false | Upload to HuggingFace Hub |
 
-```bibtex
-@inproceedings{cadenelerobot,
-  title={LeRobot: An Open-Source Library for End-to-End Robot Learning},
-  author={Cadene, Remi and Alibert, Simon and Capuano, Francesco and Aractingi, Michel and Zouitine, Adil and Kooijmans, Pepijn and Choghari, Jade and Russi, Martino and Pascal, Caroline and Palma, Steven and Shukor, Mustafa and Moss, Jess and Soare, Alexander and Aubakirova, Dana and Lhoest, Quentin and Gallou\'edec, Quentin and Wolf, Thomas},
-  booktitle={The Fourteenth International Conference on Learning Representations},
-  year={2026},
-  url={https://arxiv.org/abs/2602.22818}
-}
+**Recording flow:**
+1. Script connects both arms and cameras automatically.
+2. Per episode: press Enter to start → move the leader arm → recording stops after `episode_time_s` → reset the scene within `reset_time_s`.
+3. Dataset is saved locally after all episodes complete.
+
+**Data quality tips:**
+- Record at least **50 episodes** for usable training results.
+- Keep start positions consistent across episodes.
+- Ensure clear camera views and stable lighting.
+- Each episode should contain one complete task execution (reach → grasp → lift → place).
+
+---
+
+## Step 5: Train a Policy
+
+Train an ACT (Action Chunking with Transformers) policy on the collected dataset.
+
+Install training dependencies:
+
+```bash
+pip install -e ".[nexarm,training]"
 ```
 
-</details>
+Run training:
 
-## Contribute
+```bash
+python -m lerobot.scripts.lerobot_train \
+  --dataset.repo_id=local/nexarm_pick \
+  --policy.type=act \
+  --output_dir=outputs/train/nexarm_act \
+  --batch_size=32 \
+  --steps=100000 \
+  --save_freq=25000
+```
 
-We welcome contributions from everyone in the community! To get started, please read our [CONTRIBUTING.md](https://github.com/huggingface/lerobot/blob/main/CONTRIBUTING.md) guide. Whether you're adding a new feature, improving documentation, or fixing a bug, your help and feedback are invaluable. We're incredibly excited about the future of open-source robotics and can't wait to work with you on what's next—thank you for your support!
+**Training recommendations:**
 
-<p align="center">
-  <img alt="SO101 Video" src="./media/readme/so100_video.webp" width="640px">
-</p>
+| Item | Recommended | Notes |
+|------|-------------|-------|
+| Hardware | CUDA GPU | RTX 3090 or better preferred |
+| Episodes | 50+ | More is better |
+| Steps | 100,000 | Adjust based on loss curve |
+| Batch size | 32 | Reduce to 16 if VRAM is limited |
+| Save frequency | 25,000 | Checkpoint every 25 k steps |
 
-<div align="center">
-<sub>Built by the <a href="https://huggingface.co/lerobot">LeRobot</a> team at <a href="https://huggingface.co">Hugging Face</a> with ❤️</sub>
-</div>
+Checkpoints are saved to:
+
+```
+outputs/train/nexarm_act/checkpoints/last/pretrained_model/
+├── config.json
+├── model.safetensors
+├── policy_preprocessor.json
+├── policy_postprocessor.json
+└── train_config.json
+```
+
+---
+
+## Step 6: Run Inference
+
+Deploy the trained policy on the real robot. The follower arm executes actions predicted by the model — no leader arm needed.
+
+```bash
+python -m lerobot.scripts.lerobot_rollout \
+  --config_path=examples/nexarm/inference.yaml \
+  --policy.path=outputs/train/nexarm_act/checkpoints/last/pretrained_model
+```
+
+**Notes:**
+- No `--teleop` argument needed — the policy replaces the human operator.
+- Each run appends a timestamp to `repo_id` automatically to avoid conflicts.
+- The run is recorded as a dataset for later analysis.
+- With a GPU the policy runs at 30 Hz; on CPU, ACT action chunking (chunk_size=100) keeps throughput at 20–30 Hz because model inference only fires when the action queue empties.
+
+**Rollout strategies:**
+
+| Strategy | Flag | Description |
+|----------|------|-------------|
+| `base` | `--strategy.type=base` | Inference only, no recording |
+| `sentry` | `--strategy.type=sentry` | Continuous recording + auto-save (recommended for evaluation) |
+| `highlight` | `--strategy.type=highlight` | Ring buffer, press key to save highlights |
+| `dagger` | `--strategy.type=dagger` | Human-robot collaboration, requires leader arm |
+
+---
+
+## Code Architecture
+
+```
+src/lerobot/
+├── motors/nexarm/
+│   ├── __init__.py                  # Exports NexArmMotorsBus
+│   └── nexarm.py                    # CommProtocol framing, position read/write, torque, bridge mode
+├── robots/nexarm_follower/
+│   ├── __init__.py
+│   ├── config_nexarm_follower.py    # RobotConfig subclass (port, cameras, baudrate)
+│   └── nexarm_follower.py           # Robot subclass (connect, observe, send_action)
+└── teleoperators/nexarm_leader/
+    ├── __init__.py
+    ├── config_nexarm_leader.py      # TeleoperatorConfig subclass
+    └── nexarm_leader.py             # Teleoperator subclass (read positions, leader→follower mapping)
+```
+
+**Modified upstream files:**
+
+| File | Change |
+|------|--------|
+| `src/lerobot/robots/utils.py` | Added `nexarm_follower` branch in `make_robot_from_config()` |
+| `src/lerobot/teleoperators/utils.py` | Added `nexarm_leader` branch in `make_teleoperator_from_config()` |
+| `pyproject.toml` | Added `nexarm` optional dependency group |
+| `src/lerobot/cameras/opencv/camera_opencv.py` | Fixed `stop_event` race condition on Linux |
+| `src/lerobot/processor/normalize_processor.py` | Added device/dtype caching to avoid redundant `.to()` calls |
+
+---
+
+## Troubleshooting
+
+**Serial port permission denied (Linux)**
+```bash
+sudo usermod -a -G dialout $USER
+# Log out and back in
+```
+
+**Camera not found**
+- Run `lerobot_find_cameras opencv` to scan available indices.
+- Close other programs using the camera (OBS, browser, etc.).
+- Re-scan after unplugging and replugging USB devices.
+
+**Follower arm does not move during teleoperation**
+1. Confirm the follower COM port is correct.
+2. Confirm the follower ESP32 firmware supports CMD 68 (LeRobot bridge mode).
+3. Try power-cycling the follower arm.
+
+**TimeoutError during data collection**
+```
+TimeoutError: No position reply from NexArm
+```
+The leader firmware prints debug lines over Serial that corrupt protocol frames. The driver retries 3 times automatically. To eliminate the issue permanently, comment out the `Serial.printf` calls in `Nex_Arm.ino` inside the `lerobotMode == true` branch and reflash the firmware.
+
+**Training loss does not decrease**
+- Ensure you have at least 50 episodes.
+- Verify camera frames are not black or blurry.
+- Try increasing the learning rate: `--policy.optimizer_lr=1e-4`.
+
+**Robot moves hesitantly / small motion amplitude**
+The model collapsed to the mean. Try:
+- Lower `kl_weight`: `--policy.kl_weight=5.0` or `1.0`
+- Increase `batch_size`: `--batch_size=64`
+- Record more consistent episodes (same start position, complete task each time)
+- Train longer: `--steps=200000`
+
+**Low inference FPS on CPU**
+ACT uses action chunking (chunk_size=100) so CPU inference is normally 20–30 Hz. If slower:
+- Check no background processes are saturating the CPU.
+- Dual-camera capture adds ~45 ms per frame — this is expected.
+
+**Checksum errors**
+The leader firmware has a known checksum bug. The driver accepts both correct and incorrect checksums for compatibility.
