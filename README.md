@@ -114,7 +114,7 @@ python -c "import lerobot.rollout; print('OK')"
 |----------|--------|-------|
 | Windows 10/11 | Verified | Install CH340 driver; port format `COM19` |
 | Ubuntu 20.04+ | Verified | Port format `/dev/ttyUSB0`; add user to `dialout` group |
-| macOS | Should work | Port format `/dev/tty.usbserial-xxx` |
+| macOS | Verified | Port format `/dev/tty.usbserial-xxx` |
 
 ---
 
