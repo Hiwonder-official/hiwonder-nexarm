@@ -51,6 +51,7 @@ Frame: [0xFF][0xFF][ID][LEN][CMD][ARGS...][CHECKSUM]
 
 | CMD | Function | Direction |
 |-----|----------|-----------|
+| 56 | Set motion speed and acceleration (`motion_speed`, `motion_acc`) | Host → Follower |
 | 68 | Enter/exit LeRobot bridge mode (follower only) | Host → Follower |
 | 96 | Read 6 servo positions (12-byte reply) | Host → Device → Host |
 | 97 | Write 6 servo positions (12 bytes, no reply) | Host → Device |
