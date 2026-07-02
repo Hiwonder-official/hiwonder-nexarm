@@ -13,7 +13,7 @@ For on‑device perception, NexArm integrates a 6 TOPS K230 vision module, allow
 - Versatility: Supports multiple control methods out of the box
 
 <p align="center">
-  <img src="./sources/02.png" alt="nexarm 1" width="600"/>
+  <img src="./sources/2.png" alt="nexarm 2" width="600"/>
 </p>
 
 ---
