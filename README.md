@@ -8,8 +8,8 @@ For on‑device perception, NexArm integrates a 6 TOPS K230 vision module, allow
 
 **🎯 Compared to SO‑ARM101:**
 
-- Payload: 500 g (150% improvement)
-- Repeatability: ±2 mm (33% improvement)
+- Payload: 500 g (150% improvement over SO‑ARM101)
+- Repeatability: ±2 mm (33% improvement over SO‑ARM101)
 - Architecture: ESP32 + AT32 dual‑chip design
 - Build: All‑metal body with rotating base and parallel‑rail gripper
 - Versatility: Supports multiple control methods out of the box
