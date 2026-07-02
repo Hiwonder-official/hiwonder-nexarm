@@ -6,7 +6,7 @@ The robotic arm features an all‑metal chassis driven by 65 kg·cm magnetic enc
 
 For on‑device perception, NexArm integrates a 6 TOPS K230 vision module, allowing you to run multimodal large models and computer vision pipelines—such as YOLO tracking and hand‑eye coordinated grasping—without a PC. All schematics, firmware, and code are open source, making NexArm a transparent and modifiable platform for academic research and real‑world robotic prototyping.
 
-**🎯 Compared to SO‑ARM101**
+**🎯 Compared to SO‑ARM101:**
 
 - Payload: 500 g (150% improvement)
 - Repeatability: ±2 mm (33% improvement)
