@@ -12,6 +12,10 @@ For on‑device perception, NexArm integrates a 6 TOPS K230 vision module, allow
 - Build: All‑metal body with rotating base and parallel‑rail gripper
 - Versatility: Supports multiple control methods out of the box
 
+<p align="center">
+  <img src="./sources/01.png" alt="nexarm 1" width="600"/>
+</p>
+
 ---
 
 ## Table of Contents
