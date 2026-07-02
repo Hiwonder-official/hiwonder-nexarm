@@ -1,6 +1,16 @@
 # NexArm 6-DOF Robot Arm — LeRobot Complete Guide
 
-NexArm is a high-performance 6-DOF desktop robot arm based on an ESP32 + AT32F421 co-processor, driven by HX-30HM serial bus servos with 12-bit precision and 1 Mbps communication. This repository integrates NexArm with [🤗 LeRobot](https://github.com/huggingface/lerobot), providing a full pipeline from hardware connection and teleoperation through data collection, model training, and policy inference.
+NexArm is an open-source, [🤗 LeRobot](https://github.com/huggingface/lerobot)-native robotic arm designed for embodied AI research and rapid validation of imitation and reinforcement learning policies. Its dual‑chip architecture (ESP32 + AT32) enables synchronous leader‑follower teleoperation with millisecond‑level tracking latency, generating clean demonstration data that feeds directly into LeRobot training pipelines.
+
+The robotic arm features an all‑metal chassis driven by 65 kg·cm magnetic encoder servos, delivering ±2 mm repeatability and smooth, jitter‑free motion. Combined with advanced inverse kinematics and curve smoothing, it natively computes complex trajectories while minimizing start‑stop vibrations for fluid movement.
+
+For on‑device perception, NexArm integrates a 6 TOPS K230 vision module, allowing you to run multimodal large models and computer vision pipelines—such as YOLO tracking and hand‑eye coordinated grasping—without a PC. All schematics, firmware, and code are open source, making NexArm a transparent and modifiable platform for academic research and real‑world robotic prototyping.
+
+- Payload: 500 g (150% improvement)
+- Repeatability: ±2 mm (33% improvement)
+- Architecture: ESP32 + AT32 dual‑chip design
+- Build: All‑metal body with rotating base and parallel‑rail gripper
+- Versatility: Supports multiple control methods out of the box
 
 ---
 
